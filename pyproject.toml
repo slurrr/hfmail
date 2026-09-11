@@ -1,0 +1,16 @@
+[project]
+name = "hfmail"
+version = "0.1.0"
+description = "CLI-only email workspace and SMTP receiver for Hugging Face notifications."
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "aiosmtpd>=1.4.6",
+    "click>=8.4.1",
+    "httpx>=0.28.1",
+    "rich>=15.0.0",
+]
+
+[project.scripts]
+hfmail = "hfmail.cli:cli"
+hfmaild = "hfmail.daemon:run_server"
