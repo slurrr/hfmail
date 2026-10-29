@@ -390,12 +390,12 @@ def test_receive(sender, subject, body, type):
     # Set default templates based on type
     if type == "mention":
         sender = "website@huggingface.co"
-        subject = "[Hugging Face] @poop mentioned you in discussion 'transformers/v5-release'"
+        subject = "[Hugging Face] @you mentioned you in discussion 'transformers/v5-release'"
         if not body:
             body = (
-                "Hi poop,\n\n"
+                "Hi there,\n\n"
                 "@nielsrogge mentioned you in a discussion:\n\n"
-                "> Let's ask @poop to take a look at this PR since they are the main maintainer.\n\n"
+                "> Let's ask @you to take a look at this PR since you are the main maintainer.\n\n"
                 "View the discussion here: https://huggingface.co/transformers/discussions/123\n\n"
                 "Cheers,\nThe Hugging Face Team"
             )
@@ -426,7 +426,7 @@ def test_receive(sender, subject, body, type):
     msg = EmailMessage()
     msg["Subject"] = subject
     msg["From"] = sender
-    msg["To"] = "poop@localhost"
+    msg["To"] = "test@localhost"
     msg["Message-ID"] = f"<test-{uuid.uuid4()}@localhost>"
     msg.set_content(body)
     

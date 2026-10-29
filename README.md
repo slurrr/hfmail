@@ -1,161 +1,172 @@
-# hfmail ✉️🤖
+# hfmail
 
-`hfmail` is a CLI-only email workspace and SMTP receiver custom-built for people who hate email and want to interact with Hugging Face notifications strictly through a powerful, beautiful, and automated terminal interface.
+A terminal email client and local SMTP receiver that triages Hugging Face
+notifications into `important`, `promotion`, `spam` and `unsubscribed`. It
+receives mail over IMAP or a local SMTP listener, stores it in SQLite, applies
+sender/subject filters and Hugging Face-specific heuristics, and presents the
+result in a fast `rich` CLI. It never sends or replies with anything except
+automated `List-Unsubscribe` messages.
 
-By running a local SMTP daemon (`hfmaild`), it bypasses commercial email providers. Incoming emails are received directly, stored in a local SQLite database, classified using Hugging Face-tailored heuristics, and optionally auto-unsubscribed.
+## Requirements
 
----
+- Python 3.14 or newer (see `.python-version`)
+- [uv](https://docs.astral.sh/uv/)
+- One way to receive mail: an IMAP mailbox, or a local SMTP path to the
+  included daemon
+- Outgoing SMTP credentials only if you want automatic unsubscribe emails
 
-## 🛠️ Architecture
+## Install
 
-- **Daemon (`hfmaild`)**: Listening on a local port (default `1025`). It accepts SMTP connections, parses MIME payloads, runs spam/mention heuristics, auto-unsubscribes promotions, and persists records.
-- **Database (`mail.db`)**: Located at `~/runs/hfmail/mail.db`. Contains the emails and custom classification filters.
-- **Config (`config.json`)**: Located at `~/runs/hfmail/config.json`. Configures the SMTP receiver and outgoing SMTP credentials.
-- **CLI (`hfmail`)**: Rich terminal user interface using colors and layout panels.
-
----
-
-## 🚀 Getting Started
-
-### 1. Installation
-
-`hfmail` is managed using `uv` and resides in `~/code/dev/hfmail/`. It exposes commands via symlinks in `~/.local/bin/`.
+From a checkout of this repository:
 
 ```bash
-# Clone/Nav to project
-cd ~/code/dev/hfmail
-
-# Install in editable mode
-uv pip install -e .
+uv sync
+uv run hfmail --help
 ```
 
-### 2. Setting Up Incoming Email
+`uv sync` installs the `hfmail` CLI and the `hfmaild` SMTP server into the
+project environment. `uv run <command>` runs them from that environment.
 
-`hfmail` supports two ways of receiving emails:
+## Runtime state
 
-#### Option A: IMAP Fetcher (Safer, Recommended)
-You can fetch emails from a standard, custom-registered mailbox on a secure provider:
-1. Configure your credentials:
-   ```bash
-   hfmail config set incoming_imap.host imap.example.com
-   hfmail config set incoming_imap.username user@example.com
-   hfmail config set incoming_imap.password secretpassword
-   ```
-2. Sync new mail using the CLI command:
-   ```bash
-   hfmail sync
-   ```
-*(You can schedule `hfmail sync` in a local cron job to run periodically).*
+On first use hfmail creates `~/runs/hfmail/` and keeps all local state there:
 
-#### Option B: SMTP Daemon (Local Receiver)
-Start the background SMTP receiver daemon:
-```bash
-hfmail daemon start
-```
-Check status and see logs:
-```bash
-hfmail daemon status
-```
-Stop the daemon:
-```bash
-hfmail daemon stop
-```
+| Path | Purpose |
+| --- | --- |
+| `config.json` | IMAP, SMTP and classification settings |
+| `mail.db` | SQLite email store and custom filters |
+| `daemon.pid` | PID of the background SMTP daemon |
+| `daemon.log` | Daemon log |
 
----
+Delete that directory to reset the application. Nothing is stored in the
+repository.
 
-## 💻 CLI Commands
+## Receiving mail
 
-### Viewing and Reading Email
-- **`hfmail sync`**: Connects to the configured IMAP server, downloads new unseen emails, processes classifications, and triggers auto-unsubscribe.
-- **`hfmail inbox`**: Shows all unread **important** emails (e.g. direct mentions, PRs, security alerts) in a clean, color-coded table.
-- **`hfmail inbox --all`**: Shows all emails (read/unread) across all categories.
-- **`hfmail inbox --category promotion`**: Show only emails classified as promotions/newsletters.
-- **`hfmail inbox --category spam`**: Show spam emails.
-- **`hfmail inbox --category unsubscribed`**: Show messages from unsubscribed lists.
-- **`hfmail read <id>`**: Renders metadata in a panel, formats the body as markdown, and marks the email as read.
-- **`hfmail delete <id>`**: Removes the email from the database.
-
-### Actions & Automation
-- **`hfmail unsubscribe <id>`**: Attempts to perform an HTTP request on the unsubscribe URL and sends an SMTP email to the `List-Unsubscribe` mailto address. It also automatically registers a block filter for this sender.
-- **`hfmail spam <id>`**: Changes category to `spam` and adds a permanent filter to automatically classify future emails from this sender as spam.
-- **`hfmail important <id>`**: Marks email as important and adds a whitelisting filter.
-
-### Filters Management
-- **`hfmail filters list`**: Lists all active pattern-matching rules.
-- **`hfmail filters add sender <email_or_domain> <action>`**: E.g. `hfmail filters add sender badguy@spammer.org spam`.
-- **`hfmail filters remove <id>`**: Deletes a filter pattern.
-
-### Config Management
-- **`hfmail config show`**: Displays the active configuration in JSON.
-- **`hfmail config set <key> <value>`**: E.g. `hfmail config set outgoing_smtp.host smtp.gmail.com`.
-
----
-
-## 🧪 Injecting Test Emails
-
-You can test the system locally using the `test-receive` command while the daemon is running:
+### Option A: IMAP (recommended)
 
 ```bash
-# Inject a mention (goes to important inbox)
-hfmail test-receive --type mention
-
-# Inject a weekly newsletter (auto-unsubscribes and gets filed as unsubscribed)
-hfmail test-receive --type newsletter
-
-# Inject spam (gets filed as spam)
-hfmail test-receive --type spam
-
-# Inject custom details
-hfmail test-receive --type other --sender somebody@huggingface.co --subject "Custom subject" --body "Hello body"
+uv run hfmail config set incoming_imap.host imap.example.com
+uv run hfmail config set incoming_imap.username user@example.com
+uv run hfmail config set incoming_imap.password secret
+uv run hfmail sync
 ```
 
----
+`sync` fetches unseen messages, classifies them and optionally triggers
+unsubscribe actions. Schedule it with cron or a systemd timer if you want
+periodic delivery.
 
-## 📬 Routing Production Email to hfmail
+### Option B: local SMTP daemon
 
-Because the SMTP server runs on your local workstation, you need to route public mail to it. Here are the three standard approaches:
+```bash
+uv run hfmail daemon start
+uv run hfmail daemon status
+uv run hfmail daemon stop
+```
 
-1. **Direct Public MX Routing**:
-   - Run the daemon on a VPS with a public IP.
-   - Point your domain's MX record to your VPS IP address.
-   - Map port 25 to `1025` using `iptables` or systemd socket activation.
-   - Connect from your local CLI to the VPS database (or copy/sync it).
-2. **Reverse Proxy Tunnel (Ngrok / Cloudflare Tunnel)**:
-   - Expose port `1025` on your machine using a tunnel.
-   - Point your MX server/domain to the tunnel end-point.
-3. **Mail Fetcher / Relay Daemon**:
-   - Fetch mails from a minimal external IMAP address using a lightweight script, and pipe them to your local port `1025` using SMTP injection.
+The daemon listens on `127.0.0.1:1025` by default. Change the address with:
 
----
+```bash
+uv run hfmail config set incoming_smtp.host 127.0.0.1
+uv run hfmail config set incoming_smtp.port 1025
+```
 
-## ✉️ Outgoing SMTP Configuration
+To run the receiver in the foreground, use `uv run hfmail daemon run` or
+`uv run hfmaild`. The SMTP listener has no authentication or TLS; keep it on
+loopback or a private network.
 
-Configure your settings in `~/runs/hfmail/config.json` (or use `hfmail config set`):
+## Example
+
+With the daemon running, inject a sample notification and list it:
+
+```bash
+uv run hfmail test-receive --type mention
+uv run hfmail inbox
+```
+
+```text
+┌─────┬───────────┬──────────────────────────┬───────────────────────────────────────┬─────────────────────┬──────┐
+│ ID  │ Category  │ Sender                   │ Subject                               │ Received            │ Read │
+├─────┼───────────┼──────────────────────────┼───────────────────────────────────────┼─────────────────────┼──────┤
+│ 1   │ IMPORTANT │ website@huggingface.co   │ [Hugging Face] @you mentioned you ... │ 2026-01-01 12:00:00 │ No   │
+└─────┴───────────┴──────────────────────────┴───────────────────────────────────────┴─────────────────────┴──────┘
+Showing 1 emails. Run with --all to see read messages.
+```
+
+Other presets are `--type newsletter`, `--type spam` and `--type other`, or pass
+`--sender`, `--subject` and `--body` explicitly. Read a message with
+`uv run hfmail read 1`.
+
+## Commands
+
+| Command | Purpose |
+| --- | --- |
+| `hfmail sync` | Fetch new mail from IMAP |
+| `hfmail inbox [--all] [--category C] [--search TEXT] [--limit N]` | List messages |
+| `hfmail read <id> [--raw]` | Render a message and mark it read |
+| `hfmail delete <id>` | Delete a message from the local store |
+| `hfmail unsubscribe <id>` | Send the list's unsubscribe request and block the sender |
+| `hfmail spam <id>` | Move to spam and block the sender |
+| `hfmail important <id>` | Move to important and whitelist the sender |
+| `hfmail filters list` | List classification filters |
+| `hfmail filters add <sender\|subject> <pattern> <action>` | Add a filter |
+| `hfmail filters remove <id>` | Remove a filter |
+| `hfmail config show` | Print the merged configuration |
+| `hfmail config set <key> <value>` | Update a setting |
+| `hfmail daemon start\|stop\|status\|run` | Manage the SMTP daemon |
+| `hfmail test-receive` | Inject a sample message through SMTP |
+
+## Classification
+
+Messages are classified in this order:
+
+1. Custom filter rules from the database.
+2. `only_huggingface` (default `true`): non-Hugging Face senders become spam.
+3. Obvious spam keywords.
+4. Security and direct-mention subjects become important.
+5. Newsletter, digest and announcement subjects become promotion.
+6. Remaining messages with a `List-Unsubscribe` header become promotion.
+7. Everything else becomes important.
+
+## Outgoing SMTP
+
+Outgoing SMTP is used only to send unsubscribe requests found in a message's
+`List-Unsubscribe` header. Configure it with `hfmail config set` or edit
+`~/runs/hfmail/config.json`:
 
 ```json
 {
-    "incoming_smtp": {
-        "host": "127.0.0.1",
-        "port": 1025
-    },
-    "incoming_imap": {
-        "host": "imap.example.com",
-        "port": 993,
-        "username": "user@example.com",
-        "password": "secretpassword",
-        "use_ssl": true,
-        "folder": "INBOX"
-    },
-    "outgoing_smtp": {
-        "host": "smtp.example.com",
-        "port": 587,
-        "username": "your-user@example.com",
-        "password": "your-password",
-        "use_tls": true,
-        "from_address": "your-user@example.com"
-    },
-    "auto_unsubscribe": true,
-    "only_huggingface": true
+  "outgoing_smtp": {
+    "host": "smtp.example.com",
+    "port": 587,
+    "username": "you@example.com",
+    "password": "your-password",
+    "use_tls": true,
+    "from_address": "you@example.com"
+  }
 }
 ```
-*Note*: As requested, this email client is hardcoded to never send or reply with any message other than automated unsubscribe letters.
+
+## Verify
+
+There is no automated test suite yet. This round trip exercises SMTP receipt,
+MIME parsing, storage, classification and the CLI, and keeps all state in a
+temporary home directory:
+
+```bash
+export HOME="$(mktemp -d)"
+.venv/bin/hfmail config set incoming_smtp.port 1125
+.venv/bin/hfmail daemon start
+sleep 1
+.venv/bin/hfmail test-receive --type mention
+.venv/bin/hfmail inbox
+.venv/bin/hfmail daemon stop
+```
+
+Expected: `test-receive` prints `Mock email successfully sent via SMTP!`, and
+`inbox` shows one `IMPORTANT` row with subject
+`[Hugging Face] @you mentioned you in discussion ...`.
+
+## License
+
+MIT. See [LICENSE](LICENSE).

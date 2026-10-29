@@ -4,7 +4,30 @@ __pycache__/
 build/
 dist/
 wheels/
-*.egg-info
+*.egg-info/
 
 # Virtual environments
-.venv
+.venv/
+
+# Test and tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Local state and secrets
+.env
+.env.*
+*.log
+mail.db
+*.sqlite
+*.sqlite3
+daemon.pid
+config.json
+
+# Editor and OS noise
+.DS_Store
+.idea/
+.vscode/
+*.swp
